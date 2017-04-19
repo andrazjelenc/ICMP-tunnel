@@ -1,13 +1,11 @@
+import dpkt
+import os
+import random
+import select
 import socket
 import struct
 import sys
 import threading
-import dpkt
-import random
-import os
-import select
-import time
-
 
 def send_message(inputData):
 	splitted = inputData.split(' ', 1)
@@ -69,7 +67,7 @@ def message_receiver():
 
 if __name__ == "__main__":
 	global INTERFACE
-	INTERFACE = "192.168.1.10"
+	INTERFACE = "192.168.1.10" #default interface, used if input empty
 
 	newIface = raw_input("Enter interface ip: ")
 	if(len(newIface) > 0):
