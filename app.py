@@ -1,10 +1,10 @@
-import os
-import random
-import select
 import socket
 import struct
 import sys
 import threading
+import random
+import os
+import select
 
 def checksum(source_string):
     sum = 0
@@ -65,8 +65,15 @@ def receive_message(sniffer):
 	if(addr[0] == INTERFACE): 
 		return ""
 	
+	if(type == 0):
+		type = "Reply"
+	elif(type == 8):
+		type = "Request"
+	else:
+		type = "Unknown("+type+")"
+	
 	msgData = icmpData.decode("utf-8")
-	message = addr[0] + ": " + msgData
+	message = "[" + addr[0] + "] [" + type + "]: " + msgData
 	return message
 
 
