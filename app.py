@@ -30,9 +30,16 @@ def execution(source, command):
 	if(len(output) > 0):
 			#split output and remove header
 			splittedOutput = output.split(command, 1)
+			
+			#remove last execPath line
+			execPath = splittedOutput[0].split("\n")[-1];
 			cOutput = splittedOutput[1]
+			cOutput = cOutput.rsplit(execPath, 1)
+			cOutput = cOutput[0]
+			cOutput = cOutput.strip()
+			
 			#todo: add try catch for larger output
-			send_message(source, "[CMD-Out] " + cOutput)
+			send_message(source, "[CMD-Out] \n" + cOutput)
 	
 def checksum(source_string):
     sum = 0
