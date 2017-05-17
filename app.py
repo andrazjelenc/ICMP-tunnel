@@ -65,28 +65,33 @@ def checksum(source_string):
 
 def send_message(dest, message):
 	#splitted = inputData.split(' ', 1)
-	
-	dest = socket.gethostbyname(dest) #destination IP addr
-	message = message#.encode("utf-8") #encoded message
-	
-	my_checksum = 0
-	
-	id = random.randint(1, 0xffff)
-	
-	# Header is type (8), code (8), checksum (16), id (16), sequence (16)
-	header = struct.pack("bbHHh", 8, 0, my_checksum, id, 1)
-	
-	my_checksum = checksum(header + message)
-	
-	header = struct.pack("bbHHh", 8, 0, socket.htons(my_checksum), id, 1)
-	packet = header + message
+	try:
+		dest = socket.gethostbyname(dest) #destination IP addr
+		message = message#.encode("utf-8") #encoded message
+		
+		my_checksum = 0
+		
+		id = random.randint(1, 0xffff)
+		
+		# Header is type (8), code (8), checksum (16), id (16), sequence (16)
+		header = struct.pack("bbHHh", 8, 0, my_checksum, id, 1)
+		
+		my_checksum = checksum(header + message)
+		
+		header = struct.pack("bbHHh", 8, 0, socket.htons(my_checksum), id, 1)
+		packet = header + message
 
-	#open socket
-	s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
-	
-	#bind to public interface (ip, port) and send packet
-	s.bind((INTERFACE, 0)) 
-	s.sendto(str(packet), (dest, 1))
+		#open socket
+		s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("icmp"))
+		
+		#bind to public interface (ip, port) and send packet
+		s.bind((INTERFACE, 0)) 
+		s.sendto(str(packet), (dest, 1))
+	except Exception as inst:
+		if(inst.args[0] == 11004):
+			print "Unable to resolve destination IP"
+		else:
+			print inst.args
 	
 
 def receive_message(sniffer):
@@ -96,9 +101,10 @@ def receive_message(sniffer):
 	icmpData = recPacket[28:]
 	type, code, checksum, packetID, sequence = struct.unpack("bbHHh", icmpHeader)
 	
+	source = addr[0]
 	#filter out our own packets
-	#if(addr[0] == INTERFACE): 
-	#	return ""
+	if(source == INTERFACE): 
+		source =  str(source) + " (me)"	#in this case disable execMode
 	
 	if(type == 0):
 		type = "Reply"
@@ -109,10 +115,10 @@ def receive_message(sniffer):
 	
 	msgData = icmpData#.decode("utf-8")
 	
-	if EXECMODE == True and len(msgData) > 5 and msgData[:5] == "#run#":#and type == "Request" #be carefull without that one
-		execution(addr[0], msgData[5:])
+	if EXECMODE == True and len(msgData) > 5 and msgData[:5] == "#run#":#and type == "Request" #be carefull without that one, what about source=="me"
+		execution(source, msgData[5:])
 	
-	message = "[" + addr[0] + "] [" + type + "]: " + msgData
+	message = "[" + source + "] [" + type + "]: " + msgData
 	return message
 
 
@@ -120,7 +126,7 @@ def message_receiver():
 	#open socket and bind it to our interface
 	
 	#todo: tukaj se se nekaj sesuva, lahko tudi v funkciji reveive_message
-	#try:
+	try:
 		sniffer = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
 		sniffer.bind((INTERFACE, 0))
 	
@@ -134,20 +140,24 @@ def message_receiver():
 		while True:
 			msg_received = receive_message(sniffer)
 			if len(msg_received) > 0: # ce obstaja sporocilo
-				print("[Received] " + msg_received) # izpisi
+				print(msg_received) # izpisi
 				
-	#except:
-	#	print "[!] FATAL ERROR"
-	#	print "Try running script as administrator and test correctness of your interface IP"
-	#	print "Dying now..."
-	#	os._exit(1)
+	except Exception as inst:
+		if(inst.args[0] == 10049 or inst.args[0] == 11004):
+			print "Unable to access local interface - bad IP"
+		elif(inst.args[0] == 10013):
+			print "Unable to access local interface - run as root"
+		else:
+			print inst.args
+		
+		os._exit(1)
 
 if __name__ == "__main__":
 	global INTERFACE
 	global EXECMODE
 	
 	#INTERFACE = "192.168.1.12" #default interface, used if input empty
-	INTERFACE = "193.2.179.239"
+	INTERFACE = "193.2.176.109"
 	EXECMODE = False		#run commands in cmd (messages: #run#command)		
 	
 	newIface = raw_input("Enter interface ip: ")
